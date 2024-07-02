@@ -54,3 +54,7 @@ eclipse-build
 
 *.versionsBackup
 .flattened-pom.xml
+
+# MacOSX jenv tool
+.java-version
+

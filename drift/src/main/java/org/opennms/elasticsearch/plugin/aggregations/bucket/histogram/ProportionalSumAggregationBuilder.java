@@ -27,18 +27,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.elasticsearch.common.ParseField;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.joda.Joda;
 import org.elasticsearch.common.rounding.DateTimeUnit;
 import org.elasticsearch.common.rounding.Rounding;
 import org.elasticsearch.common.time.DateMathParser;
-import org.elasticsearch.core.TimeValue;
-import org.elasticsearch.search.aggregations.support.AggregationContext;
-import org.elasticsearch.xcontent.ObjectParser;
-import org.elasticsearch.xcontent.XContentBuilder;
-import org.elasticsearch.xcontent.XContentParser;
+import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.xcontent.ObjectParser;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentParser;
 import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.index.query.QueryShardContext;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationBuilder;
 import org.elasticsearch.search.aggregations.AggregatorFactories.Builder;
@@ -57,9 +58,7 @@ import org.elasticsearch.search.aggregations.support.MultiValuesSourceParseHelpe
 import org.elasticsearch.search.aggregations.support.ValueType;
 import org.elasticsearch.search.aggregations.support.ValuesSourceConfig;
 import org.elasticsearch.search.aggregations.support.ValuesSourceType;
-import org.elasticsearch.xcontent.ParseField;
 import org.joda.time.DateTimeZone;
-
 
 /**
  * This is a copy of {@link org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramAggregationBuilder}
@@ -429,7 +428,7 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
      * coordinating node in order to generate missing buckets, which may cross a transition
      * even though data on the shards doesn't.
      */
-    DateTimeZone rewriteTimeZone(AggregationContext context) throws IOException {
+    DateTimeZone rewriteTimeZone(QueryShardContext context) throws IOException {
 
         final DateTimeZone tz = null; // timeZone();
         /*
@@ -485,14 +484,14 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
     }
 
     @Override
-    protected MultiValuesSourceAggregatorFactory innerBuild(AggregationContext context, Map<String, ValuesSourceConfig> configs,
+    protected MultiValuesSourceAggregatorFactory innerBuild(QueryShardContext queryShardContext, Map<String, ValuesSourceConfig> configs,
                                                             Map<String, QueryBuilder> filters,
-                                                            DocValueFormat format,
-                                                            AggregatorFactory parent, Builder subFactoriesBuilder) throws IOException {
+                                                                        DocValueFormat format,
+                                                                        AggregatorFactory parent, Builder subFactoriesBuilder) throws IOException {
         // HACK: No timeZone() present in MultiValuesSourceAggregationBuilder, but it is present on the ValuesSourceAggregationBuilder
         final DateTimeZone tz = null; // timeZone();
         final Rounding rounding = createRounding(tz);
-        final DateTimeZone rewrittenTimeZone = rewriteTimeZone(context);
+        final DateTimeZone rewrittenTimeZone = rewriteTimeZone(queryShardContext);
         final Rounding shardRounding;
         if (tz == rewrittenTimeZone) {
             shardRounding = rounding;
@@ -506,7 +505,7 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
             //roundedBounds = this.extendedBounds.parseAndValidate(name, context, format).round(rounding);
         }
         return new ProportionalSumAggregatorFactory(name, configs, offset, order, keyed, minDocCount,
-                rounding, shardRounding, roundedBounds, format, context, parent, subFactoriesBuilder, metadata, start, end, fieldNames);
+                rounding, shardRounding, roundedBounds, format, queryShardContext, parent, subFactoriesBuilder, metadata, start, end, fieldNames);
     }
 
     /** Return the interval as a date time unit if applicable. If this returns

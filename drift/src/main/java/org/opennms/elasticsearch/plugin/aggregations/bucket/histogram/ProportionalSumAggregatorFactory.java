@@ -35,6 +35,7 @@ import java.util.Map;
 import org.elasticsearch.common.joda.Joda;
 import org.elasticsearch.common.rounding.Rounding;
 import org.elasticsearch.index.mapper.DateFieldMapper;
+import org.elasticsearch.index.query.QueryShardContext;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.Aggregator;
 import org.elasticsearch.search.aggregations.AggregatorFactories;
@@ -42,9 +43,9 @@ import org.elasticsearch.search.aggregations.AggregatorFactory;
 import org.elasticsearch.search.aggregations.BucketOrder;
 import org.elasticsearch.search.aggregations.CardinalityUpperBound;
 import org.elasticsearch.search.aggregations.bucket.histogram.LongBounds;
-import org.elasticsearch.search.aggregations.support.AggregationContext;
 import org.elasticsearch.search.aggregations.support.MultiValuesSourceAggregatorFactory;
 import org.elasticsearch.search.aggregations.support.ValuesSourceConfig;
+import org.elasticsearch.search.internal.SearchContext;
 
 public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregatorFactory {
 
@@ -63,10 +64,10 @@ public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregato
     public ProportionalSumAggregatorFactory(String name, Map<String, ValuesSourceConfig> configs,
                                             long offset, BucketOrder order, boolean keyed, long minDocCount,
                                             Rounding rounding, Rounding shardRounding, LongBounds extendedBounds,
-                                            DocValueFormat format, AggregationContext context, AggregatorFactory parent,
+                                            DocValueFormat format, QueryShardContext queryShardContext, AggregatorFactory parent,
                                             AggregatorFactories.Builder subFactoriesBuilder,
                                             Map<String, Object> metaData, long start, long end, String[] fieldNames) throws IOException {
-        super(name, configs, format, context, parent, subFactoriesBuilder, metaData);
+        super(name, configs, format, queryShardContext, parent, subFactoriesBuilder, metaData);
 
         this.configs = configs;
         this.offset = offset;
@@ -82,13 +83,13 @@ public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregato
     }
 
     @Override
-    protected Aggregator doCreateInternal(Map<String, ValuesSourceConfig> configs,
+    protected Aggregator doCreateInternal(SearchContext searchContext, Map<String, ValuesSourceConfig> configs,
                                           DocValueFormat format, Aggregator parent, CardinalityUpperBound cardinality,
                                           Map<String, Object> metadata) throws IOException {
-        return createAggregator(format, parent, cardinality, metadata);
+        return createAggregator(searchContext, format, parent, cardinality, metadata);
     }
 
-    private Aggregator createAggregator(DocValueFormat format, Aggregator parent,
+    private Aggregator createAggregator(SearchContext searchContext, DocValueFormat format, Aggregator parent,
                                         CardinalityUpperBound cardinality,
                                         Map<String, Object> metaData) throws IOException {
 
@@ -109,14 +110,15 @@ public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregato
         }
 
         return new ProportionalSumAggregator(name, factories, rounding, effectiveOffset, order, keyed, minDocCount, extendedBounds, configs,
-                effectiveFormat, context, parent, cardinality, metaData, start, end, fieldNames);
+                effectiveFormat, searchContext, parent, cardinality, metaData, start, end, fieldNames);
     }
 
     @Override
-    protected Aggregator createUnmapped(Aggregator parent,
+    protected Aggregator createUnmapped(SearchContext searchContext,
+                                        Aggregator parent,
                                         Map<String, Object> metadata)
             throws IOException {
-        return createAggregator(null, parent, CardinalityUpperBound.NONE, metadata);
+        return createAggregator(searchContext, null, parent, CardinalityUpperBound.NONE, metadata);
     }
 
 }

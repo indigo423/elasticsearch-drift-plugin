@@ -36,10 +36,10 @@ import java.util.Map;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.apache.lucene.util.CollectionUtil;
+import org.elasticsearch.common.lease.Releasables;
 import org.elasticsearch.common.rounding.Rounding;
 import org.elasticsearch.common.util.BigArrays;
 import org.elasticsearch.common.util.DoubleArray;
-import org.elasticsearch.core.Releasables;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationExecutionException;
@@ -54,8 +54,8 @@ import org.elasticsearch.search.aggregations.LeafBucketCollectorBase;
 import org.elasticsearch.search.aggregations.bucket.BucketsAggregator;
 import org.elasticsearch.search.aggregations.bucket.histogram.LongBounds;
 import org.elasticsearch.search.aggregations.bucket.terms.LongKeyedBucketOrds;
-import org.elasticsearch.search.aggregations.support.AggregationContext;
 import org.elasticsearch.search.aggregations.support.ValuesSourceConfig;
+import org.elasticsearch.search.internal.SearchContext;
 
 /**
  * This bucket aggregator determines allows documents to be added into many
@@ -84,15 +84,14 @@ public class ProportionalSumAggregator extends BucketsAggregator {
     private final Long end;
 
     private final String[] fieldNames;
-    private final AggregationContext context;
 
     ProportionalSumAggregator(String name, AggregatorFactories factories, Rounding rounding, long offset, BucketOrder order,
                               boolean keyed,
                               long minDocCount, LongBounds extendedBounds, Map<String, ValuesSourceConfig> valuesSourceConfigs,
-                              DocValueFormat formatter, AggregationContext context, Aggregator parent, CardinalityUpperBound bucketCardinality,
+                              DocValueFormat formatter, SearchContext aggregationContext, Aggregator parent, CardinalityUpperBound bucketCardinality,
                               Map<String, Object> metaData, Long start, Long end, String[] fieldNames) throws IOException {
 
-        super(name, factories, context, parent, bucketCardinality, metaData);
+        super(name, factories, aggregationContext, parent, bucketCardinality, metaData);
         this.rounding = rounding;
         this.offset = offset;
         this.order = order;
@@ -103,10 +102,9 @@ public class ProportionalSumAggregator extends BucketsAggregator {
         this.start = start != null ? start : Long.MIN_VALUE;
         this.end = end != null ? end : Long.MAX_VALUE;
         this.fieldNames = fieldNames;
-        this.context = context;
 
         if (valuesSourceConfigs != null && !valuesSourceConfigs.isEmpty()) {
-            this.valuesSources = new MultiValuesSource.NumericMultiValuesSource(valuesSourceConfigs);
+            this.valuesSources = new MultiValuesSource.NumericMultiValuesSource(valuesSourceConfigs, context.getQueryShardContext());
         } else {
             this.valuesSources = null;
         }
@@ -271,10 +269,9 @@ public class ProportionalSumAggregator extends BucketsAggregator {
         }
         return results;
     }
-
     @FunctionalInterface
     protected interface BucketBuilderForVariableWithOwningBucket<B> {
-        B build(long owningBucketOrd, long bucketValue, long docCount, InternalAggregations subAggregationResults);
+        B build(long owningBucketOrd, long bucketValue, int docCount, InternalAggregations subAggregationResults);
     }
 
     @Override

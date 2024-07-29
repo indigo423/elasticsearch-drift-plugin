@@ -25,6 +25,7 @@ import java.util.Objects;
 
 import org.apache.lucene.index.LeafReaderContext;
 import org.elasticsearch.index.fielddata.SortedNumericDoubleValues;
+import org.elasticsearch.index.query.QueryShardContext;
 import org.elasticsearch.search.aggregations.support.ValuesSource;
 import org.elasticsearch.search.aggregations.support.ValuesSourceConfig;
 
@@ -36,7 +37,8 @@ public abstract class MultiValuesSource <VS extends ValuesSource> {
     protected Map<String, VS> values;
 
     public static class NumericMultiValuesSource extends MultiValuesSource<ValuesSource.Numeric> {
-        public NumericMultiValuesSource(Map<String, ValuesSourceConfig> valuesSourceConfigs) {
+        public NumericMultiValuesSource(Map<String, ValuesSourceConfig> valuesSourceConfigs,
+                                        QueryShardContext context) {
             values = new HashMap<>(valuesSourceConfigs.size());
             for (Map.Entry<String, ValuesSourceConfig> entry : valuesSourceConfigs.entrySet()) {
                 values.put(entry.getKey(), (ValuesSource.Numeric) entry.getValue().getValuesSource());

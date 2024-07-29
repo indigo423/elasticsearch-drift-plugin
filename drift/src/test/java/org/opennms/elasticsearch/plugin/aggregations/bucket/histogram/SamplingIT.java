@@ -28,8 +28,8 @@
 
 package org.opennms.elasticsearch.plugin.aggregations.bucket.histogram;
 
+import static org.elasticsearch.common.xcontent.XContentFactory.jsonBuilder;
 import static org.elasticsearch.test.hamcrest.ElasticsearchAssertions.assertSearchResponse;
-import static org.elasticsearch.xcontent.XContentFactory.jsonBuilder;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.Matchers.closeTo;
 import static org.hamcrest.Matchers.notNullValue;

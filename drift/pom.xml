@@ -16,8 +16,7 @@
     </parent>
 
     <properties>
-        <elasticsearch.version>${elasticsearch.version.default}</elasticsearch.version>
-        <elasticsearch.version.default>7.17.22</elasticsearch.version.default>
+        <elasticsearch.version>7.10.2</elasticsearch.version>
     </properties>
 
     <dependencies>

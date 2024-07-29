@@ -23,6 +23,7 @@ import org.apache.lucene.util.PriorityQueue;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.rounding.Rounding;
+import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.Aggregations;
 import org.elasticsearch.search.aggregations.BucketOrder;
@@ -34,8 +35,9 @@ import org.elasticsearch.search.aggregations.KeyComparable;
 import org.elasticsearch.search.aggregations.bucket.MultiBucketsAggregation;
 import org.elasticsearch.search.aggregations.bucket.histogram.Histogram;
 import org.elasticsearch.search.aggregations.bucket.histogram.HistogramFactory;
+import org.elasticsearch.search.aggregations.bucket.histogram.InternalDateHistogram;
 import org.elasticsearch.search.aggregations.bucket.histogram.LongBounds;
-import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.search.aggregations.pipeline.PipelineAggregator;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 

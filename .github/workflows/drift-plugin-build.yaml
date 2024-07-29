@@ -42,6 +42,8 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build plugin from source
         run: make ES_VERSION=${{ matrix.es_version }}
+      - name: Run tests
+        run: make ES_VERSION=${{ matrix.es_version }} tests
       - name: Persist drift-plugin artifacts
         uses: actions/upload-artifact@v4
         with:

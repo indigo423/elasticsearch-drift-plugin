@@ -19,6 +19,10 @@ help:
 build:
 	mvn --settings=$(MAVEN_SETTINGS_XML) package -Delasticsearch.version=$(ES_VERSION)
 
+.PHONY tests:
+tests:
+	mvn --settings=$(MAVEN_SETTINGS_XML) test integration-test -Delasticsearch.version=$(ES_VERSION)
+
 .PHONY clean:
 clean:
 	mvn clean

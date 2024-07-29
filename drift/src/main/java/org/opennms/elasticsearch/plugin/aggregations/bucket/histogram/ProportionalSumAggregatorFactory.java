@@ -30,43 +30,46 @@ package org.opennms.elasticsearch.plugin.aggregations.bucket.histogram;
 
 import java.io.IOException;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Map;
 
 import org.elasticsearch.common.joda.Joda;
 import org.elasticsearch.common.rounding.Rounding;
 import org.elasticsearch.index.mapper.DateFieldMapper;
+import org.elasticsearch.index.query.QueryShardContext;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.Aggregator;
 import org.elasticsearch.search.aggregations.AggregatorFactories;
 import org.elasticsearch.search.aggregations.AggregatorFactory;
 import org.elasticsearch.search.aggregations.BucketOrder;
-import org.elasticsearch.search.aggregations.CardinalityUpperBound;
-import org.elasticsearch.search.aggregations.bucket.histogram.LongBounds;
-import org.elasticsearch.search.aggregations.support.AggregationContext;
+import org.elasticsearch.search.aggregations.bucket.histogram.ExtendedBounds;
+import org.elasticsearch.search.aggregations.pipeline.PipelineAggregator;
 import org.elasticsearch.search.aggregations.support.MultiValuesSourceAggregatorFactory;
+import org.elasticsearch.search.aggregations.support.ValuesSource;
 import org.elasticsearch.search.aggregations.support.ValuesSourceConfig;
+import org.elasticsearch.search.internal.SearchContext;
 
-public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregatorFactory {
+public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregatorFactory<ValuesSource.Numeric> {
 
-    private final Map<String, ValuesSourceConfig> configs;
+    private final Map<String, ValuesSourceConfig<ValuesSource.Numeric>> configs;
     private final long offset;
     private final BucketOrder order;
     private final boolean keyed;
     private final long minDocCount;
-    private final LongBounds extendedBounds;
+    private final ExtendedBounds extendedBounds;
     protected final DocValueFormat format;
     private Rounding rounding;
     private final Long start;
     private final Long end;
     private final String[] fieldNames;
 
-    public ProportionalSumAggregatorFactory(String name, Map<String, ValuesSourceConfig> configs,
+    public ProportionalSumAggregatorFactory(String name, Map<String, ValuesSourceConfig<ValuesSource.Numeric>> configs,
                                             long offset, BucketOrder order, boolean keyed, long minDocCount,
-                                            Rounding rounding, Rounding shardRounding, LongBounds extendedBounds,
-                                            DocValueFormat format, AggregationContext context, AggregatorFactory parent,
+                                            Rounding rounding, Rounding shardRounding, ExtendedBounds extendedBounds,
+                                            DocValueFormat format, QueryShardContext queryShardContext, AggregatorFactory parent,
                                             AggregatorFactories.Builder subFactoriesBuilder,
                                             Map<String, Object> metaData, long start, long end, String[] fieldNames) throws IOException {
-        super(name, configs, format, context, parent, subFactoriesBuilder, metaData);
+        super(name, configs, format, queryShardContext, parent, subFactoriesBuilder, metaData);
 
         this.configs = configs;
         this.offset = offset;
@@ -82,14 +85,25 @@ public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregato
     }
 
     @Override
-    protected Aggregator doCreateInternal(Map<String, ValuesSourceConfig> configs,
-                                          DocValueFormat format, Aggregator parent, CardinalityUpperBound cardinality,
-                                          Map<String, Object> metadata) throws IOException {
-        return createAggregator(format, parent, cardinality, metadata);
+    public Aggregator createInternal(SearchContext searchContext, Aggregator parent, boolean collectsFromSingleBucket, List<PipelineAggregator> pipelineAggregators,
+                                     Map<String, Object> metaData) throws IOException {
+        if (configs.isEmpty()) {
+            return createUnmapped(searchContext, parent, pipelineAggregators, metaData);
+        }
+        return doCreateInternal(searchContext, configs, format, parent, collectsFromSingleBucket, pipelineAggregators, metaData);
     }
 
-    private Aggregator createAggregator(DocValueFormat format, Aggregator parent,
-                                        CardinalityUpperBound cardinality,
+    protected Aggregator doCreateInternal(SearchContext searchContext, Map<String, ValuesSourceConfig<ValuesSource.Numeric>> configs, DocValueFormat format,
+                                          Aggregator parent, boolean collectsFromSingleBucket,
+                                          List<PipelineAggregator> pipelineAggregators,
+                                          Map<String, Object> metaData) throws IOException {
+        if (!collectsFromSingleBucket) {
+            return asMultiBucketAggregator(this, searchContext, parent);
+        }
+        return createAggregator(searchContext, configs, format, parent, pipelineAggregators, metaData);
+    }
+
+    private Aggregator createAggregator(SearchContext searchContext, Map<String, ValuesSourceConfig<ValuesSource.Numeric>> configs, DocValueFormat format, Aggregator parent, List<PipelineAggregator> pipelineAggregators,
                                         Map<String, Object> metaData) throws IOException {
 
         // Compute offset so that the bucket start at the given start time
@@ -109,14 +123,13 @@ public class ProportionalSumAggregatorFactory extends MultiValuesSourceAggregato
         }
 
         return new ProportionalSumAggregator(name, factories, rounding, effectiveOffset, order, keyed, minDocCount, extendedBounds, configs,
-                effectiveFormat, context, parent, cardinality, metaData, start, end, fieldNames);
+                effectiveFormat, searchContext, parent, pipelineAggregators, metaData, start, end, fieldNames);
     }
 
     @Override
-    protected Aggregator createUnmapped(Aggregator parent,
-                                        Map<String, Object> metadata)
+    protected Aggregator createUnmapped(SearchContext searchContext, Aggregator parent, List<PipelineAggregator> pipelineAggregators, Map<String, Object> metaData)
             throws IOException {
-        return createAggregator(null, parent, CardinalityUpperBound.NONE, metadata);
+        return createAggregator(searchContext, null, null, parent, pipelineAggregators, metaData);
     }
 
 }

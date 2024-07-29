@@ -27,18 +27,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
+import org.elasticsearch.common.ParseField;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.joda.Joda;
 import org.elasticsearch.common.rounding.DateTimeUnit;
 import org.elasticsearch.common.rounding.Rounding;
 import org.elasticsearch.common.time.DateMathParser;
-import org.elasticsearch.core.TimeValue;
-import org.elasticsearch.search.aggregations.support.AggregationContext;
-import org.elasticsearch.xcontent.ObjectParser;
-import org.elasticsearch.xcontent.XContentBuilder;
-import org.elasticsearch.xcontent.XContentParser;
-import org.elasticsearch.index.query.QueryBuilder;
+import org.elasticsearch.common.unit.TimeValue;
+import org.elasticsearch.common.xcontent.ObjectParser;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentParser;
+import org.elasticsearch.index.query.QueryShardContext;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.AggregationBuilder;
 import org.elasticsearch.search.aggregations.AggregatorFactories.Builder;
@@ -46,20 +46,19 @@ import org.elasticsearch.search.aggregations.AggregatorFactory;
 import org.elasticsearch.search.aggregations.BucketOrder;
 import org.elasticsearch.search.aggregations.InternalOrder;
 import org.elasticsearch.search.aggregations.InternalOrder.CompoundOrder;
+import org.elasticsearch.search.aggregations.bucket.MultiBucketAggregationBuilder;
 import org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramInterval;
+import org.elasticsearch.search.aggregations.bucket.histogram.ExtendedBounds;
 import org.elasticsearch.search.aggregations.bucket.histogram.Histogram;
-import org.elasticsearch.search.aggregations.bucket.histogram.LongBounds;
-import org.elasticsearch.search.aggregations.support.CoreValuesSourceType;
 import org.elasticsearch.search.aggregations.support.MultiValuesSourceAggregationBuilder;
 import org.elasticsearch.search.aggregations.support.MultiValuesSourceAggregatorFactory;
 import org.elasticsearch.search.aggregations.support.MultiValuesSourceFieldConfig;
 import org.elasticsearch.search.aggregations.support.MultiValuesSourceParseHelper;
 import org.elasticsearch.search.aggregations.support.ValueType;
+import org.elasticsearch.search.aggregations.support.ValuesSource.Numeric;
 import org.elasticsearch.search.aggregations.support.ValuesSourceConfig;
-import org.elasticsearch.search.aggregations.support.ValuesSourceType;
-import org.elasticsearch.xcontent.ParseField;
+import org.elasticsearch.search.internal.SearchContext;
 import org.joda.time.DateTimeZone;
-
 
 /**
  * This is a copy of {@link org.elasticsearch.search.aggregations.bucket.histogram.DateHistogramAggregationBuilder}
@@ -70,7 +69,8 @@ import org.joda.time.DateTimeZone;
  * 2) We use multiple fields instead of a single field, since the user needs to specify the values for
  * the range start/end along with the field for the actual value.
  */
-public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregationBuilder<ProportionalSumAggregationBuilder> {
+public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregationBuilder<Numeric, ProportionalSumAggregationBuilder>
+        implements MultiBucketAggregationBuilder {
     public static final String NAME = "proportional_sum";
     private static DateMathParser EPOCH_MILLIS_PARSER = Joda.forPattern("epoch_millis").toDateMathParser();
 
@@ -132,7 +132,7 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
 
         PARSER.declareLong(ProportionalSumAggregationBuilder::minDocCount, Histogram.MIN_DOC_COUNT_FIELD);
 
-        PARSER.declareField(ProportionalSumAggregationBuilder::extendedBounds, parser -> LongBounds.PARSER.apply(parser, null),
+        PARSER.declareField(ProportionalSumAggregationBuilder::extendedBounds, parser -> ExtendedBounds.PARSER.apply(parser, null),
                 new ParseField("extended_bounds"), ObjectParser.ValueType.OBJECT);
 
         PARSER.declareObjectArray(ProportionalSumAggregationBuilder::order, (p, c) -> InternalOrder.Parser.parseOrderParam(p),
@@ -151,7 +151,7 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
     private long interval;
     private DateHistogramInterval dateHistogramInterval;
     private long offset = 0;
-    private LongBounds extendedBounds;
+    private ExtendedBounds extendedBounds;
     private BucketOrder order = BucketOrder.key(true);
     private boolean keyed = false;
     private long minDocCount = 0;
@@ -161,7 +161,7 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
 
     /** Create a new builder with the given name. */
     public ProportionalSumAggregationBuilder(String name) {
-        super(name);
+        super(name, ValueType.NUMERIC);
     }
 
     protected ProportionalSumAggregationBuilder(ProportionalSumAggregationBuilder clone,
@@ -186,14 +186,14 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
 
     /** Read from a stream, for internal use only. */
     public ProportionalSumAggregationBuilder(StreamInput in) throws IOException {
-        super(in);
+        super(in, ValueType.NUMERIC);
         order = InternalOrder.Streams.readHistogramOrder(in, true);
         keyed = in.readBoolean();
         minDocCount = in.readVLong();
         interval = in.readLong();
         dateHistogramInterval = in.readOptionalWriteable(DateHistogramInterval::new);
         offset = in.readLong();
-        extendedBounds = in.readOptionalWriteable(LongBounds::new);
+        extendedBounds = in.readOptionalWriteable(ExtendedBounds::new);
         start = in.readOptionalLong();
         end = in.readOptionalLong();
         fieldNames = in.readOptionalStringArray();
@@ -310,13 +310,13 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
     }
 
     /** Return extended bounds for this histogram, or {@code null} if none are set. */
-    public LongBounds extendedBounds() {
+    public ExtendedBounds extendedBounds() {
         return extendedBounds;
     }
 
     /** Set extended bounds on this histogram, so that buckets would also be
      *  generated on intervals that did not match any documents. */
-    public ProportionalSumAggregationBuilder extendedBounds(LongBounds extendedBounds) {
+    public ProportionalSumAggregationBuilder extendedBounds(ExtendedBounds extendedBounds) {
         if (extendedBounds == null) {
             throw new IllegalArgumentException("[extendedBounds] must not be null: [" + name + "]");
         }
@@ -429,7 +429,7 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
      * coordinating node in order to generate missing buckets, which may cross a transition
      * even though data on the shards doesn't.
      */
-    DateTimeZone rewriteTimeZone(AggregationContext context) throws IOException {
+    DateTimeZone rewriteTimeZone(QueryShardContext context) throws IOException {
 
         final DateTimeZone tz = null; // timeZone();
         /*
@@ -485,14 +485,13 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
     }
 
     @Override
-    protected MultiValuesSourceAggregatorFactory innerBuild(AggregationContext context, Map<String, ValuesSourceConfig> configs,
-                                                            Map<String, QueryBuilder> filters,
-                                                            DocValueFormat format,
-                                                            AggregatorFactory parent, Builder subFactoriesBuilder) throws IOException {
+    protected MultiValuesSourceAggregatorFactory<Numeric> innerBuild(QueryShardContext queryShardContext, Map<String, ValuesSourceConfig<Numeric>> configs,
+                                                                        DocValueFormat format,
+                                                                        AggregatorFactory parent, Builder subFactoriesBuilder) throws IOException {
         // HACK: No timeZone() present in MultiValuesSourceAggregationBuilder, but it is present on the ValuesSourceAggregationBuilder
         final DateTimeZone tz = null; // timeZone();
         final Rounding rounding = createRounding(tz);
-        final DateTimeZone rewrittenTimeZone = rewriteTimeZone(context);
+        final DateTimeZone rewrittenTimeZone = rewriteTimeZone(queryShardContext);
         final Rounding shardRounding;
         if (tz == rewrittenTimeZone) {
             shardRounding = rounding;
@@ -500,13 +499,13 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
             shardRounding = createRounding(rewrittenTimeZone);
         }
 
-        LongBounds roundedBounds = null;
+        ExtendedBounds roundedBounds = null;
         if (this.extendedBounds != null) {
             // parse any string bounds to longs and round
             //roundedBounds = this.extendedBounds.parseAndValidate(name, context, format).round(rounding);
         }
         return new ProportionalSumAggregatorFactory(name, configs, offset, order, keyed, minDocCount,
-                rounding, shardRounding, roundedBounds, format, context, parent, subFactoriesBuilder, metadata, start, end, fieldNames);
+                rounding, shardRounding, roundedBounds, format, queryShardContext, parent, subFactoriesBuilder, metaData, start, end, fieldNames);
     }
 
     /** Return the interval as a date time unit if applicable. If this returns
@@ -545,16 +544,6 @@ public class ProportionalSumAggregationBuilder extends MultiValuesSourceAggregat
         }
         Rounding rounding = tzRoundingBuilder.build();
         return rounding;
-    }
-
-    @Override
-    protected ValuesSourceType defaultValueSourceType() {
-        return CoreValuesSourceType.NUMERIC;
-    }
-
-    @Override
-    public BucketCardinality bucketCardinality() {
-        return BucketCardinality.MANY;
     }
 
     @Override

@@ -23,6 +23,7 @@ import org.apache.lucene.util.PriorityQueue;
 import org.elasticsearch.common.io.stream.StreamInput;
 import org.elasticsearch.common.io.stream.StreamOutput;
 import org.elasticsearch.common.rounding.Rounding;
+import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.search.DocValueFormat;
 import org.elasticsearch.search.aggregations.Aggregations;
 import org.elasticsearch.search.aggregations.BucketOrder;
@@ -32,10 +33,11 @@ import org.elasticsearch.search.aggregations.InternalMultiBucketAggregation;
 import org.elasticsearch.search.aggregations.InternalOrder;
 import org.elasticsearch.search.aggregations.KeyComparable;
 import org.elasticsearch.search.aggregations.bucket.MultiBucketsAggregation;
+import org.elasticsearch.search.aggregations.bucket.histogram.ExtendedBounds;
 import org.elasticsearch.search.aggregations.bucket.histogram.Histogram;
 import org.elasticsearch.search.aggregations.bucket.histogram.HistogramFactory;
-import org.elasticsearch.search.aggregations.bucket.histogram.LongBounds;
-import org.elasticsearch.xcontent.XContentBuilder;
+import org.elasticsearch.search.aggregations.bucket.histogram.InternalDateHistogram;
+import org.elasticsearch.search.aggregations.pipeline.PipelineAggregator;
 import org.joda.time.DateTime;
 import org.joda.time.DateTimeZone;
 
@@ -83,7 +85,7 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
             key = in.readLong();
             docCount = in.readVLong();
             value = in.readDouble();
-            aggregations = InternalAggregations.readFrom(in);
+            aggregations = new InternalAggregations(in);
         }
 
         @Override
@@ -190,13 +192,13 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
 
         final Rounding rounding;
         final InternalAggregations subAggregations;
-        final LongBounds bounds;
+        final ExtendedBounds bounds;
 
         EmptyBucketInfo(Rounding rounding, InternalAggregations subAggregations) {
             this(rounding, subAggregations, null);
         }
 
-        EmptyBucketInfo(Rounding rounding, InternalAggregations subAggregations, LongBounds bounds) {
+        EmptyBucketInfo(Rounding rounding, InternalAggregations subAggregations, ExtendedBounds bounds) {
             this.rounding = rounding;
             this.subAggregations = subAggregations;
             this.bounds = bounds;
@@ -204,8 +206,8 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
 
         EmptyBucketInfo(StreamInput in) throws IOException {
             rounding = Rounding.Streams.read(in);
-            subAggregations = InternalAggregations.readFrom(in);
-            bounds = in.readOptionalWriteable(LongBounds::new);
+            subAggregations = new InternalAggregations(in);
+            bounds = in.readOptionalWriteable(ExtendedBounds::new);
         }
 
         void writeTo(StreamOutput out) throws IOException {
@@ -241,9 +243,9 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
 
     InternalProportionalSumHistogram(String name, List<Bucket> buckets, BucketOrder order, long minDocCount, long offset,
                                      EmptyBucketInfo emptyBucketInfo,
-                                     DocValueFormat formatter, boolean keyed,
+                                     DocValueFormat formatter, boolean keyed, List<PipelineAggregator> pipelineAggregators,
                                      Map<String, Object> metaData) {
-        super(name, metaData);
+        super(name, pipelineAggregators, metaData);
         this.buckets = buckets;
         this.order = order;
         this.offset = offset;
@@ -314,7 +316,7 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
     @Override
     public InternalProportionalSumHistogram create(List<Bucket> buckets) {
         return new InternalProportionalSumHistogram(name, buckets, order, minDocCount, offset, emptyBucketInfo, format,
-                keyed, metadata);
+                keyed, pipelineAggregators(), metaData);
     }
 
     @Override
@@ -419,7 +421,7 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
 
     private void addEmptyBuckets(List<Bucket> list, ReduceContext reduceContext) {
         Bucket lastBucket = null;
-        LongBounds bounds = emptyBucketInfo.bounds;
+        ExtendedBounds bounds = emptyBucketInfo.bounds;
         ListIterator<Bucket> iter = list.listIterator();
 
         // first adding all the empty buckets *before* the actual data (based on th extended_bounds.min the user requested)
@@ -499,11 +501,11 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
             reducedBuckets = reverse;
         } else {
             // sorted by compound order or sub-aggregation, need to fall back to a costly n*log(n) sort
-            CollectionUtil.introSort(reducedBuckets, order.comparator());
+            CollectionUtil.introSort(reducedBuckets, order.comparator(null));
         }
 
         return new InternalProportionalSumHistogram(getName(), reducedBuckets, order, minDocCount, offset, emptyBucketInfo,
-                format, keyed, getMetadata());
+                format, keyed, pipelineAggregators(), getMetaData());
     }
 
     @Override
@@ -545,7 +547,7 @@ public final class InternalProportionalSumHistogram extends InternalMultiBucketA
         }
         buckets2 = Collections.unmodifiableList(buckets2);
         return new InternalProportionalSumHistogram(name, buckets2, order, minDocCount, offset, emptyBucketInfo, format,
-                keyed, getMetadata());
+                keyed, pipelineAggregators(), getMetaData());
     }
 
     @Override
